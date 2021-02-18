@@ -1,0 +1,62 @@
+
+SET 'auto.offset.reset' = 'earliest';
+
+-- create ksql stream from incoming topic for noise
+CREATE STREAM test_finestksql_obs_noise
+        (resulttime BIGINT,
+        result VARCHAR)
+WITH (
+    KAFKA_TOPIC = 'test_finestksql_obs_noise',
+    VALUE_FORMAT = 'AVRO'
+  );
+
+-- transform with antilog
+CREATE STREAM test_finestksql_intermediate_antilognoise AS
+    SELECT result,
+         TIMESTAMPTOSTRING(resulttime, 'HH:mm:ss', 'Europe/Helsinki') AS result_time,
+         TIMESTAMPTOSTRING(resulttime, 'yyyy-MM-dd') AS result_day,
+         TIMESTAMPTOSTRING(resulttime, 'yyyy-MM-dd') +'/'+TIMESTAMPTOSTRING(resulttime+(24*3600*1000), 'yyyy-MM-dd') AS result_night,
+         TIMESTAMPTOSTRING(resulttime, 'yyyy-MM-dd HH:mm:ss', 'Europe/Helsinki') AS result_timestamp,
+         power10(CAST(result AS double)/10) AS antilogval
+  FROM finestksql_obs_noise
+    WHERE datastream_id = 842
+  EMIT CHANGES;
+
+-- filter into daystream and night stream
+CREATE STREAM finestksql_intermediate_antilognoise_day
+AS SELECT * from finestksql_intermediate_antilognoise
+WHERE result_time >= '07:00:00' AND result_time < '22:00:00'
+EMIT CHANGES;
+
+CREATE STREAM finestksql_intermediate_antilognoise_night
+AS SELECT * from finestksql_intermediate_antilognoise
+WHERE result_time < '07:00:00' and result_time >= '22:00:00'
+EMIT CHANGES;
+
+-- aggregate into table
+CREATE TABLE finestksql_avg_noise_per_day AS
+SELECT result_day,
+       TIMESTAMPTOSTRING(WINDOWSTART,'yyyy-MM-dd HH:mm:ss', 'Europe/Helsinki') AS SESSION_START_TS,
+       TIMESTAMPTOSTRING(WINDOWEND,'yyyy-MM-dd HH:mm:ss', 'Europe/Helsinki')   AS SESSION_END_TS,
+       (WINDOWEND - WINDOWSTART)/3600000                                     AS SESSION_LENGTH_H,
+        (10*LN(AVG(antilogval)))/2.303 as avgnoise_per_day
+FROM finestksql_intermediate_antilognoise_day
+WINDOW SESSION (9 HOURS)
+GROUP BY result_day
+emit changes;
+
+CREATE TABLE finestksql_avg_noise_per_night AS
+SELECT result_night,
+       TIMESTAMPTOSTRING(WINDOWSTART,'yyyy-MM-dd HH:mm:ss', 'Europe/Helsinki') AS SESSION_START_TS,
+       TIMESTAMPTOSTRING(WINDOWEND,'yyyy-MM-dd HH:mm:ss', 'Europe/Helsinki')   AS SESSION_END_TS,
+       (WINDOWEND - WINDOWSTART)/3600000                                     AS SESSION_LENGTH_H,
+        (10*LN(AVG(antilogval)))/2.303 as avgnoise_per_night
+FROM finestksql_intermediate_antilognoise_day
+WINDOW SESSION (15 HOURS)
+GROUP BY result_night
+emit changes;
+
+
+
+--  10log(sum(10^(Laeq/10))/#samples)
+

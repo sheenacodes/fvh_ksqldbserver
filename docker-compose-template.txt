@@ -1,0 +1,47 @@
+---
+version: '2'
+
+services:
+  ksqldb-server:
+    image: confluentinc/ksqldb-server:0.14.0
+    hostname: ksqldb-server
+    container_name: ksqldb-server
+    ports:
+      - "8088:8088"
+    volumes:
+      - ./certs:/certs:ro
+      - ./jars:/jars:ro
+      - ./prod:/prod:ro
+    environment:
+      KSQL_LISTENERS: http://0.0.0.0:8088
+      KSQL_BOOTSTRAP_SERVERS: url:kafkaport
+      KSQL_KSQL_LOGGING_PROCESSING_STREAM_AUTO_CREATE: "true"
+      KSQL_KSQL_LOGGING_PROCESSING_TOPIC_AUTO_CREATE: "true"
+      KSQL_KSQL_SERVICE_ID: dockerksql_
+      KSQL_SECURITY_PROTOCOL: SSL
+      KSQL_SSL_KEYSTORE_TYPE: PKCS12
+      KSQL_SSL_KEYSTORE_LOCATION: /certs/client.keystore.p12
+      KSQL_SSL_KEYSTORE_PASSWORD: hidden
+      KSQL_SSL_KEY_PASSWORD: hidden
+      KSQL_SSL_TRUSTSTORE_TYPE: JKS
+      KSQL_SSL_TRUSTSTORE_LOCATION: /certs/client.truststore.jks
+      KSQL_SSL_TRUSTSTORE_PASSWORD: hidden
+      KSQL_KSQL_SCHEMA_REGISTRY_URL: https://url:karaspaceport
+      KSQL_KSQL_SCHEMA_REGISTRY_BASIC_AUTH_CREDENTIALS_SOURCE: USER_INFO
+      KSQL_KSQL_SCHEMA_REGISTRY_BASIC_AUTH_USER_INFO: avnadmin:hidden
+      KSQL_KSQL_SCHEMA_REGISTRY_SSL_TRUSTSTORE_LOCATION: /certs/schema_registry.truststore.jks
+      KSQL_KSQL_SCHEMA_REGISTRY_SSL_TRUSTSTORE_PASSWORD: hidden
+      KSQL_KSQL_SINK_REPLICAS: "2"
+      KSQL_KSQL_STREAMS_REPLICATION_FACTOR: "2"
+      KSQL_KSQL_INTERNAL_TOPIC_REPLICAS: "2"
+      #KSQL_KSQL_EXTENSION_DIR: /jars
+      #KSQL_KSQL_QUERIES_FILE: /prod/noise.ksql
+
+
+  ksqldb-cli:
+    image: confluentinc/ksqldb-cli:0.14.0
+    container_name: ksqldb-cli
+    depends_on:
+      - ksqldb-server
+    entrypoint: /bin/sh
+    tty: true
