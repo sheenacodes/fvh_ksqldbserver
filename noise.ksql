@@ -27,7 +27,7 @@ EMIT CHANGES;
 
 CREATE STREAM finestksql_intermediate_antilognoise_night
 AS SELECT * from finestksql_intermediate_antilognoise
-WHERE result_time < '07:00:00' and result_time >= '22:00:00'
+WHERE result_time < '07:00:00' or result_time >= '22:00:00'
 EMIT CHANGES;
 
 -- aggregate into table

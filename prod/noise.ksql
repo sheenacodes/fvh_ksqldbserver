@@ -11,8 +11,9 @@ CREATE STREAM finestksql_obs_noise  WITH (
 CREATE STREAM finestksql_intermediate_antilognoise AS
     SELECT result,
          TIMESTAMPTOSTRING(resulttime, 'HH:mm:ss', 'Europe/Helsinki') AS result_time,
-         TIMESTAMPTOSTRING(resulttime, 'yyyy-MM-dd') AS result_day,
-         TIMESTAMPTOSTRING(resulttime, 'yyyy-MM-dd') +'/'+TIMESTAMPTOSTRING(resulttime+(24*3600*1000), 'yyyy-MM-dd') AS result_night,
+         TIMESTAMPTOSTRING(resulttime, 'yyyy-MM-dd') AS period_2,
+         TIMESTAMPTOSTRING(resulttime-(24*3600*1000), 'yyyy-MM-dd') +'/'+TIMESTAMPTOSTRING(resulttime, 'yyyy-MM-dd') AS period_1,
+         TIMESTAMPTOSTRING(resulttime, 'yyyy-MM-dd') +'/'+TIMESTAMPTOSTRING(resulttime+(24*3600*1000), 'yyyy-MM-dd') AS period_3,
          TIMESTAMPTOSTRING(resulttime, 'yyyy-MM-dd HH:mm:ss', 'Europe/Helsinki') AS result_timestamp,
          power10(CAST(result AS double)/10) AS antilogval
   FROM finestksql_obs_noise
@@ -21,13 +22,27 @@ CREATE STREAM finestksql_intermediate_antilognoise AS
 
 -- filter into daystream and night stream
 CREATE STREAM finestksql_intermediate_antilognoise_day
-AS SELECT * from finestksql_intermediate_antilognoise
-WHERE result_time >= '07:00:00' AND result_time < '22:00:00'
+AS SELECT
+    result,
+    antilogval,
+    result_time,
+    result_timestamp,
+    period_2 as result_day
+ from finestksql_intermediate_antilognoise
+WHERE result_time >= '07:00:00' AND result_time <= '22:00:00'
 EMIT CHANGES;
 
 CREATE STREAM finestksql_intermediate_antilognoise_night
-AS SELECT * from finestksql_intermediate_antilognoise
-WHERE result_time < '07:00:00' and result_time >= '22:00:00'
+AS SELECT result,
+          antilogval,
+          result_time,
+          result_timestamp,
+          CASE
+            WHEN result_time < '07:00:00' THEN period_1
+            WHEN result_time > '22:00:00' THEN period_3
+        END AS result_night
+ from finestksql_intermediate_antilognoise
+WHERE result_time < '07:00:00' and result_time > '22:00:00'
 EMIT CHANGES;
 
 -- aggregate into table
